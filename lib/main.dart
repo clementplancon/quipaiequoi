@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -7,6 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'config/app_config.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 final backendUrl = AppConfig.backendUrl;
 final apiKey = AppConfig.apiKey;
@@ -113,6 +115,22 @@ class _TicketScannerPageState extends State<TicketScannerPage> with TickerProvid
       _articles = [];
     });
 
+    // Vérifier la connexion Internet
+    var connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.single == ConnectivityResult.none) {
+      setState(() {
+        _isLoading = false;
+        _scanProgress = 0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Aucune connexion internet. Cette fonctionnalité requiert une connexion."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     // Lance une animation contrôlée qui augmente _scanProgress de façon non-linéaire
     _progressCtrl?.dispose();
     _progressCtrl = AnimationController(
@@ -133,31 +151,53 @@ class _TicketScannerPageState extends State<TicketScannerPage> with TickerProvid
     // Petite attente pour l'effet
     await Future.delayed(const Duration(milliseconds: 600));
 
-    final response = await http.post(
-      Uri.parse(backendUrl),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: jsonEncode({'base64_image': base64img}),
-    );
-    if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body);
-      final articlesList = (decoded['articles'] as List?) ?? [];
-      setState(() {
-        _articles = articlesList
-            .map((a) => Article(
-                  id: _uuid.v4(),
-                  nom: a['nomArticle']?.toString() ?? '',
-                  prix: (a['prixUnitaire'] as num?)?.toDouble() ?? 0,
-                ))
-            .toList();
+    bool error = false;
+    String errorMessage = "Erruer lors de l'analyse du ticket.Veuillez réessayer.";
+
+    try {
+      final response = await http.post(
+        Uri.parse(backendUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        body: jsonEncode({'base64_image': base64img}),
+      ).timeout(const Duration(seconds: 25), onTimeout: () {
+        throw Exception("Le serveur met trop de temps à répondre.");
       });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Erreur lors de l'analyse du ticket"),
-        backgroundColor: Colors.red,
-      ));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final articlesList = (decoded['articles'] as List?) ?? [];
+        setState(() {
+          _articles = articlesList
+              .map((a) => Article(
+                    id: _uuid.v4(),
+                    nom: a['nomArticle']?.toString() ?? '',
+                    prix: (a['prixUnitaire'] as num?)?.toDouble() ?? 0,
+                  ))
+              .toList();
+        });
+      } else {
+        error = true;
+        if (response.body.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map && decoded['error'] != null) {
+              errorMessage = "Erreur : ${decoded['error']}";
+            }
+          } catch (_) {}
+        }
+      }
+    } on SocketException {
+      error = true;
+      errorMessage = "Erreur réseau : impossible de joindre le serveur.";
+    } on TimeoutException {
+      error = true;
+      errorMessage = "Délai d'attente dépassé. Veuillez vérifier votre connexion.";
+    } catch (e) {
+      error = true;
+      errorMessage = e.toString();
     }
 
     // Termine la barre d’un coup et reset après une courte pause
@@ -171,6 +211,22 @@ class _TicketScannerPageState extends State<TicketScannerPage> with TickerProvid
       _isLoading = false;
       _scanProgress = 0;
     });
+
+    if (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: "Réessayer",
+            textColor: Colors.white,
+            onPressed: () {
+              _sendToBackend(imageBytes);
+            },
+          ),
+        ),
+      );
+    }
   }
 
   // Ajout/Suppression articles/personnes
