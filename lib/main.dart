@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -9,12 +10,15 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'config/app_config.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 final backendUrl = AppConfig.backendUrl;
 final apiKey = AppConfig.apiKey;
 
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  MobileAds.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -63,12 +67,49 @@ class _TicketScannerPageState extends State<TicketScannerPage> with TickerProvid
   final _uuid = const Uuid();
   double _scanProgress = 0;
   AnimationController? _progressCtrl;
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
 
+// TODO: replace this test ad unit with your own ad unit.
+  final adUnitId = kReleaseMode ? 'ca-app-pub-7170327342166140/4448964559' : (Platform.isAndroid
+    ? 'ca-app-pub-3940256099942544/9214589741'
+    : 'ca-app-pub-3940256099942544/2435281174');
 
   @override
   void initState() {
     super.initState();
     _persons.add(Person(id: _uuid.v4(), name: "Moi"));
+    loadAd();
+  }
+
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
+  }
+
+  /// Loads a banner ad.
+  void loadAd() async {
+    _bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        // Called when an ad is successfully received.
+        onAdLoaded: (ad) {
+          debugPrint('$ad loaded.');
+          setState(() {
+            _isAdLoaded = true;
+          });
+        },
+        // Called when an ad request failed.
+        onAdFailedToLoad: (ad, err) {
+          debugPrint('BannerAd failed to load: $err');
+          // Dispose the ad here to free resources.
+          ad.dispose();
+        },
+      ),
+    )..load();
   }
 
   // 1. Prendre et compresser une photo
@@ -390,6 +431,18 @@ class _TicketScannerPageState extends State<TicketScannerPage> with TickerProvid
                   const Text(
                     "Scan en cours...",
                     style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: _bannerAd != null
+                      ? SizedBox(
+                          height: _bannerAd!.size.height.toDouble(),
+                          width: _bannerAd!.size.width.toDouble(),
+                          child: AdWidget(ad: _bannerAd!),
+                        )
+                      : SizedBox(),
                   ),
                 ],
               )
