@@ -8,7 +8,7 @@
 PRODUCT_NAME = quipaiequoi
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = dev.pointvirgule.quipaiequoi
+PRODUCT_BUNDLE_IDENTIFIER = point.virgule.quipaiequoi
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2025 pointvirgule.dev All rights reserved.

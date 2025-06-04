@@ -1,4 +1,4 @@
-package dev.pointvirgule.quipaiequoi
+package point.virgule.quipaiequoi
 
 import io.flutter.embedding.android.FlutterActivity
 

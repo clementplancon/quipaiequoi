@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-package="dev.pointvirgule.quipaiequoi">
+package="point.virgule.quipaiequoi">
     <application
         android:label="quipaiequoi"
         android:name="${applicationName}"
